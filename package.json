@@ -1,0 +1,18 @@
+{
+  "name": "fourier-duckdb",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Hilbert-space orthogonal projection in L2 demonstrated with live SQL in duckdb-wasm",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@duckdb/duckdb-wasm": "^1.29.0"
+  },
+  "devDependencies": {
+    "vite": "^5.4.0"
+  }
+}
