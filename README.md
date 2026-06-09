@@ -4,7 +4,7 @@ Fourier series as SQL. A square wave is projected onto the orthogonal basis {sin
 
 The repository is a demonstration of two things at once: that orthogonal projection in a Hilbert space is a few lines of SQL, and that DuckDB-Wasm makes a database a reasonable compute engine for interactive pages with no server.
 
-![screenshot](docs/screenshot.png)
+![screenshot](doc/screenshot.png)
 
 ## Quick start
 
