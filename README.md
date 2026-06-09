@@ -1,39 +1,81 @@
-# duckdb-fourier
+# fourier-duckdb
 
-Fourier series as SQL. A square wave is projected onto the orthogonal basis {sin(kx)} in L2, and every number — coefficients, partial sums, errors — is computed by DuckDB running in the browser via [duckdb-wasm](https://github.com/duckdb/duckdb-wasm). Moving a slider re-executes the query.
+Fourier series as SQL. A target function — square, sawtooth, or triangle wave —
+is projected onto the orthogonal basis {sin(kx)} in L², and every number on the
+page (coefficients, partial sums, the L² error, the captured energy) is computed
+by [DuckDB-Wasm](https://github.com/duckdb/duckdb-wasm) running in the browser.
+Moving a slider re-executes the query and redraws the result.
 
-The repository is a demonstration of two things at once: that orthogonal projection in a Hilbert space is a few lines of SQL, and that DuckDB-Wasm makes a database a reasonable compute engine for interactive pages with no server.
+The app is a demonstration of two things at once: that orthogonal projection in a
+Hilbert space is a few lines of SQL, and that DuckDB-Wasm makes a database a
+reasonable compute engine for interactive pages with no server.
 
 ![screenshot](doc/screenshot.png)
 
-## Quick start
+## Prerequisites
 
-Requires Node 20+.
+- **Node 20 or newer** (`node --version`).
+
+## Quick start
 
 ```bash
 npm install
-npm run dev        # development server
-npm run build      # static build in dist/
-npm run preview    # serve the build locally
+npm run dev        # development server (Vite)
+npm run build      # static build into dist/
+npm run preview    # serve the production build locally
 ```
 
-The build is self-contained. `dist/` makes no requests to external origins and can be served from any static file server, including offline:
+`npm install && npm run dev` starts the app. Moving the slider re-executes SQL and
+updates the plot, the three stat tiles, and the SQL panel; switching the target
+function rebuilds the tables and continues.
+
+## Fully offline / behind a corporate proxy
+
+DuckDB-Wasm is installed from npm and **bundled locally**. The app uses the
+manual bundle-selection API (`selectBundle` with explicit local URLs resolved via
+Vite's `?url` imports) rather than `getJsDelivrBundles()`, so **nothing is fetched
+from a CDN at runtime** — verify in the browser's network tab that there are no
+requests to `jsdelivr.net` or any external origin.
+
+### Configuring npm behind a TLS-inspecting proxy
+
+`npm install` is the only step that touches the network. If your network sits
+behind an inspecting proxy that re-signs TLS with a corporate root CA, point npm
+at the proxy and at the CA bundle so the certificate chain validates:
+
+```bash
+npm config set proxy        http://proxy.corp.example:8080
+npm config set https-proxy  http://proxy.corp.example:8080
+npm config set cafile       /path/to/corporate-root-ca.pem
+```
+
+`cafile` should be the PEM file holding your proxy's root certificate. Prefer this
+over `strict-ssl=false` — disabling certificate validation is a last resort, not a
+fix. Once dependencies are installed, no further network access is needed.
+
+### Serving the build offline
+
+The built `dist/` folder is fully self-contained — the wasm, the worker, the CSS,
+and the JS are all served from the same origin. Copy it to an air-gapped machine
+and serve it with any static file server:
 
 ```bash
 python -m http.server -d dist 8000
+# then open http://localhost:8000/
 ```
 
 ## The SQL
 
-Everything below also runs in the DuckDB CLI, unchanged.
-
-Sample the target function on a grid and compute the Fourier coefficients. The coefficient of basis function sin(kx) is the inner product with f divided by the squared norm of the basis function, which in SQL is a `SUM` divided by a `SUM`:
+Everything below also runs in the DuckDB CLI, unchanged. Sample the target on a
+1024-point grid over [0, 2π) and compute the Fourier sine coefficients. The
+coefficient of sin(kx) is the inner product ⟨f, sin(k·)⟩ divided by the squared
+norm ‖sin(k·)‖², which in SQL is a `SUM` over a `SUM`:
 
 ```sql
 CREATE TABLE f AS
 SELECT i,
        2*pi()*i/1024 AS x,
-       CASE WHEN 2*pi()*i/1024 < pi() THEN 1.0 ELSE -1.0 END AS y
+       CASE WHEN 2*pi()*i/1024 < pi() THEN 1.0 ELSE -1.0 END AS y  -- square wave
 FROM generate_series(0, 1023) t(i);
 
 CREATE TABLE coeffs AS
@@ -42,7 +84,9 @@ FROM f, generate_series(1, 49) t(k)
 GROUP BY k;
 ```
 
-Build the partial sum P_K f for a truncation K and measure the result. The L2 error and the captured energy (Parseval's identity) are window aggregates over the same CTE, so one statement returns both the curve and the statistics:
+Build the partial sum P_K f for a truncation K and measure it. The L² error and
+the captured energy (Parseval's identity) are window aggregates over the same CTE,
+so one statement returns both the curve and the statistics:
 
 ```sql
 WITH terms AS (
@@ -58,72 +102,45 @@ SELECT i, x, y, approx,
 FROM p ORDER BY i;
 ```
 
-The orthogonality of the basis can be verified as a Gram matrix using DuckDB's fixed-size arrays. Each basis function becomes one `FLOAT[1024]` value, and `array_inner_product` computes the pairwise inner products:
-
-```sql
-CREATE TABLE basis AS
-SELECT k, array_agg(sin(k*x) ORDER BY i)::FLOAT[1024] AS v
-FROM f, generate_series(1, 6) t(k)
-GROUP BY k;
-
-SELECT a.k AS j, b.k AS k,
-       round(array_inner_product(a.v, b.v), 2) AS ip
-FROM basis a JOIN basis b ON a.k <= b.k
-ORDER BY j, k;
-```
-
-The output is approximately 512 on the diagonal (n/2) and 0 off the diagonal.
+Switching the target function in the UI drops and recreates `f` and `coeffs` with
+a different `y` expression (sawtooth or triangle) and re-runs the current query.
 
 ## Checking the numbers
 
-The square wave has the closed-form series (4/pi) * sum over odd k of sin(kx)/k. Two consequences serve as tests:
+The square wave has the closed-form series (4/π)·Σ_{odd k} sin(kx)/k. Two
+consequences serve as tests, both confirmed by the demo:
 
-- At K = 1, the captured energy is 8/pi^2, approximately 81.06%. The query above returns this value.
-- Even coefficients are zero, so the L2 error only decreases when K passes an odd integer.
+- At **K = 1**, the captured energy is 8/π² ≈ **81%**.
+- Even coefficients are zero, so the L² error only drops when K passes an **odd**
+  integer; by **K = 49** the error is **below 0.3**.
 
-The overshoot visible at the jumps is the Gibbs phenomenon. Its height (about 9% of the jump) does not decrease as K grows, while the L2 error tends to zero. This is the difference between pointwise convergence and convergence in norm, and it is the reason L2 — rather than a space of pointwise limits — is the natural setting for Fourier series.
+The overshoot at the jumps is the **Gibbs phenomenon**: about 9% of the jump
+height, and it does *not* shrink as K grows, even though the L² error tends to
+zero. That is the difference between pointwise convergence and convergence in
+norm, and it is why L² is the natural setting for Fourier series.
+
+The triangle wave is continuous, so its coefficients decay as **1/k²** rather than
+**1/k**; convergence is visibly faster and there is no overshoot.
 
 ## Why this is a Hilbert space
 
-L2([0, 2pi)) is a vector space with the inner product <f, g> = integral of f(x)g(x) dx, and it is complete in the induced norm (the Riesz-Fischer theorem). Completeness is what the demo exercises: Parseval bounds the coefficient sums, which makes the partial sums a Cauchy sequence, and completeness guarantees that this sequence converges to an element of the space. The discrete version computed here, R^1024 with a weighted dot product, is a finite-dimensional inner product space and therefore complete automatically; it approximates the continuous object as the grid is refined.
-
-## duckdb-wasm integration
-
-The app bundles duckdb-wasm from npm rather than loading it from a CDN, using explicit local URLs for the wasm and worker assets:
-
-```js
-import * as duckdb from "@duckdb/duckdb-wasm";
-import wasmUrl from "@duckdb/duckdb-wasm/dist/duckdb-eh.wasm?url";
-import workerUrl from "@duckdb/duckdb-wasm/dist/duckdb-browser-eh.worker.js?url";
-
-const bundle = await duckdb.selectBundle({
-  eh: { mainModule: wasmUrl, mainWorker: workerUrl },
-});
-const worker = new Worker(bundle.mainWorker);
-const db = new duckdb.AsyncDuckDB(new duckdb.VoidLogger(), worker);
-await db.instantiate(bundle.mainModule);
-const conn = await db.connect();
-```
-
-Query results arrive as Apache Arrow tables:
-
-```js
-const result = await conn.query(sql);
-const rows = result.toArray();           // array of row proxies
-const first = rows[0];
-console.log(Number(first.l2_error));     // Arrow numerics may need Number()
-```
-
-Slider input fires faster than queries complete, so results are guarded with a run counter and stale responses are discarded.
+L²([0, 2π)) is a vector space with inner product ⟨f, g⟩ = ∫ f(x)g(x) dx, complete
+in the induced norm (Riesz–Fischer). Completeness is what the demo exercises:
+Parseval bounds the coefficient sums, which makes the partial sums a Cauchy
+sequence, and completeness guarantees the sequence converges to an element of the
+space. The discrete object computed here — ℝ¹⁰²⁴ with a weighted dot product — is
+a finite-dimensional inner-product space, automatically complete, and approximates
+the continuous object as the grid is refined.
 
 ## Project structure
 
 ```
 index.html        page markup
-src/main.js       wiring: slider, selector, stats
-src/sql.js        DuckDB setup and queries
+src/main.js       wiring: slider, selector, stats, SQL panel, run-counter guard
+src/sql.js        DuckDB-Wasm setup, target expressions, queries
 src/plot.js       canvas rendering
-src/style.css     styles
+src/style.css     styles (system font stack; no web fonts)
+vite.config.js    relative-base static build
 ```
 
 ## License
