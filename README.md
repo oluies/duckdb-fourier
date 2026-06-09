@@ -10,7 +10,7 @@ The app is a demonstration of two things at once: that orthogonal projection in 
 Hilbert space is a few lines of SQL, and that DuckDB-Wasm makes a database a
 reasonable compute engine for interactive pages with no server.
 
-![screenshot](doc/screenshot.png)
+![screenshot](docs/screenshot.png)
 
 ## Prerequisites
 
