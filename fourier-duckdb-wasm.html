@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fourier projection in L2 — DuckDB-Wasm</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #FCFCFA;
+    --ink: #1C1C19;
+    --muted: #6E6D64;
+    --line: #E4E3DB;
+    --duck: #FFE600;
+    --duck-ink: #5C5200;
+    --proj: #5247C7;
+    --target: #8A8980;
+    --panel: #14140F;
+    --panel-ink: #E8E7DC;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+  }
+  main { max-width: 860px; margin: 0 auto; padding: 48px 24px 80px; }
+  .eyebrow {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    margin-bottom: 12px;
+  }
+  .eyebrow b { color: var(--duck-ink); background: var(--duck); font-weight: 500; padding: 2px 6px; border-radius: 3px; }
+  h1 {
+    font-family: "Space Grotesk", system-ui, sans-serif;
+    font-size: 34px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    line-height: 1.15;
+  }
+  .lede { color: var(--muted); margin-top: 10px; max-width: 56ch; }
+  .status {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 16px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 12.5px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 5px 12px;
+    color: var(--muted);
+  }
+  .status .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .status.ready .dot { background: #2E9E5B; }
+  .status.error .dot { background: #C8401F; }
+
+  .controls {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin: 40px 0 20px;
+  }
+  .controls label { font-size: 14px; color: var(--muted); white-space: nowrap; }
+  input[type="range"] { flex: 1; accent-color: var(--proj); height: 28px; }
+  .kbadge {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 15px;
+    font-weight: 500;
+    background: var(--duck);
+    color: var(--duck-ink);
+    border-radius: 6px;
+    padding: 3px 10px;
+    min-width: 44px;
+    text-align: center;
+  }
+
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .stat { border: 1px solid var(--line); border-radius: 10px; padding: 12px 16px; background: #fff; }
+  .stat .label { font-size: 12.5px; color: var(--muted); }
+  .stat .value { font-family: "Space Grotesk", system-ui, sans-serif; font-size: 24px; font-weight: 500; }
+  .stat .value small { font-size: 14px; color: var(--muted); font-weight: 400; }
+
+  .plotwrap { margin: 20px 0 8px; border: 1px solid var(--line); border-radius: 10px; background: #fff; padding: 12px; }
+  canvas { width: 100%; height: 300px; display: block; }
+  .legend { display: flex; gap: 20px; font-size: 13px; color: var(--muted); padding: 0 4px; }
+  .legend .swatch { display: inline-block; width: 16px; height: 3px; vertical-align: middle; margin-right: 7px; border-radius: 2px; }
+
+  .sqlpanel { margin-top: 36px; border-radius: 12px; overflow: hidden; background: var(--panel); }
+  .sqlhead {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 16px;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 12.5px;
+    color: #A8A79A;
+    border-bottom: 1px solid #2A2A22;
+  }
+  .sqlhead .time { color: var(--duck); }
+  pre {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--panel-ink);
+    padding: 16px;
+    overflow-x: auto;
+    white-space: pre;
+  }
+  pre mark { background: var(--duck); color: var(--duck-ink); border-radius: 3px; padding: 0 4px; font-weight: 500; }
+  pre .kw { color: #8FB8F0; }
+
+  .footnote { margin-top: 24px; font-size: 14px; color: var(--muted); max-width: 62ch; }
+  @media (max-width: 560px) {
+    .stats { grid-template-columns: 1fr; }
+    h1 { font-size: 27px; }
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .stat .value { transition: color 120ms ease; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <div class="eyebrow">in-browser SQL · <b>duckdb-wasm</b> · no server</div>
+  <h1>Fourier projection in L&sup2;</h1>
+  <p class="lede">A square wave is projected onto the orthogonal basis {sin(kx)}. Every number on this page — coefficients, partial sums, errors — is computed by DuckDB running inside this browser tab. The query below re-executes on each slider change.</p>
+  <div class="status" id="status"><span class="dot"></span><span id="status-text">Loading DuckDB-Wasm…</span></div>
+
+  <div class="controls">
+    <label for="k">Basis terms K</label>
+    <input type="range" id="k" min="1" max="49" step="1" value="3" disabled>
+    <span class="kbadge" id="kval">3</span>
+  </div>
+
+  <div class="stats">
+    <div class="stat">
+      <div class="label">L&sup2; error &Vert;f &minus; P<sub>K</sub>f&Vert;</div>
+      <div class="value" id="l2">&ndash;</div>
+    </div>
+    <div class="stat">
+      <div class="label">Energy captured (Parseval)</div>
+      <div class="value" id="energy">&ndash;</div>
+    </div>
+    <div class="stat">
+      <div class="label">Query time</div>
+      <div class="value" id="qtime">&ndash; <small>ms</small></div>
+    </div>
+  </div>
+
+  <div class="plotwrap"><canvas id="plot"></canvas></div>
+  <div class="legend">
+    <span><span class="swatch" style="background:#8A8980"></span>f, square wave</span>
+    <span><span class="swatch" style="background:#5247C7"></span>P<sub>K</sub>f, projection</span>
+  </div>
+
+  <div class="sqlpanel">
+    <div class="sqlhead"><span>query executed by DuckDB</span><span class="time" id="sqltime"></span></div>
+    <pre id="sqlbox"></pre>
+  </div>
+
+  <p class="footnote">The error decreases only when K passes an odd integer, since the even coefficients of a square wave vanish. The overshoot at the jumps (the Gibbs phenomenon) remains at roughly 9% for every K, even as the L&sup2; error tends to zero: convergence in norm is not pointwise convergence.</p>
+</main>
+
+<script type="module">
+import * as duckdb from "https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@1.29.0/+esm";
+
+const $ = (id) => document.getElementById(id);
+const N = 1024;
+
+const SETUP = [
+`CREATE TABLE f AS
+SELECT i,
+       2*pi()*i/${N} AS x,
+       CASE WHEN 2*pi()*i/${N} < pi() THEN 1.0 ELSE -1.0 END AS y
+FROM generate_series(0, ${N - 1}) t(i)`,
+`CREATE TABLE coeffs AS
+SELECT k, sum(y * sin(k*x)) / sum(sin(k*x)^2) AS c
+FROM f, generate_series(1, 49) t(k)
+GROUP BY k`
+];
+
+const queryFor = (K) => `WITH terms AS (
+  SELECT f.i, f.x, f.y, c.c * sin(c.k * f.x) AS term
+  FROM f JOIN coeffs c ON c.k <= ${K}
+), p AS (
+  SELECT i, any_value(x) AS x, any_value(y) AS y, sum(term) AS approx
+  FROM terms GROUP BY i
+)
+SELECT i, x, y, approx,
+       sqrt(sum((y - approx)^2) OVER () * 2*pi()/${N}) AS l2_error,
+       sum(approx^2) OVER () / sum(y^2) OVER ()       AS energy
+FROM p ORDER BY i`;
+
+const KEYWORDS = /\b(WITH|SELECT|FROM|JOIN|ON|GROUP BY|ORDER BY|OVER|AS|CASE|WHEN|THEN|ELSE|END|CREATE TABLE)\b/g;
+function renderSql(K) {
+  let html = queryFor(K)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(KEYWORDS, '<span class="kw">$1</span>');
+  html = html.replace(`c.k &lt;= ${K}`, `c.k &lt;= <mark>${K}</mark>`);
+  $("sqlbox").innerHTML = html;
+}
+
+const canvas = $("plot");
+const ctx = canvas.getContext("2d");
+function draw(rows) {
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  canvas.width = w * dpr; canvas.height = h * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  const pad = { l: 10, r: 10, t: 14, b: 14 };
+  const ymin = -1.6, ymax = 1.6;
+  const X = (i) => pad.l + (w - pad.l - pad.r) * i / (rows.length - 1);
+  const Y = (v) => pad.t + (h - pad.t - pad.b) * (ymax - v) / (ymax - ymin);
+
+  ctx.strokeStyle = "#E4E3DB"; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(pad.l, Y(0)); ctx.lineTo(w - pad.r, Y(0)); ctx.stroke();
+  ctx.setLineDash([3, 4]);
+  for (const v of [1, -1]) { ctx.beginPath(); ctx.moveTo(pad.l, Y(v)); ctx.lineTo(w - pad.r, Y(v)); ctx.stroke(); }
+  ctx.setLineDash([]);
+
+  ctx.strokeStyle = "#8A8980"; ctx.lineWidth = 2;
+  ctx.beginPath();
+  rows.forEach((r, i) => { const px = X(i), py = Y(r.y); i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py); });
+  ctx.stroke();
+
+  ctx.strokeStyle = "#5247C7"; ctx.lineWidth = 2.25;
+  ctx.beginPath();
+  rows.forEach((r, i) => { const px = X(i), py = Y(r.a); i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py); });
+  ctx.stroke();
+}
+
+let conn = null;
+let runId = 0;
+let lastRows = null;
+
+async function run(K) {
+  const myRun = ++runId;
+  renderSql(K);
+  const t0 = performance.now();
+  const result = await conn.query(queryFor(K));
+  const dt = performance.now() - t0;
+  if (myRun !== runId) return;
+  const rows = result.toArray().map((r) => ({ y: Number(r.y), a: Number(r.approx) }));
+  const first = result.toArray()[0];
+  $("l2").textContent = Number(first.l2_error).toFixed(3);
+  $("energy").textContent = (100 * Number(first.energy)).toFixed(1) + "%";
+  $("qtime").innerHTML = dt.toFixed(1) + " <small>ms</small>";
+  $("sqltime").textContent = dt.toFixed(1) + " ms";
+  lastRows = rows;
+  draw(rows);
+}
+
+async function init() {
+  const statusEl = $("status"), statusText = $("status-text");
+  try {
+    const bundle = await duckdb.selectBundle(duckdb.getJsDelivrBundles());
+    const workerUrl = URL.createObjectURL(
+      new Blob([`importScripts("${bundle.mainWorker}");`], { type: "text/javascript" })
+    );
+    const worker = new Worker(workerUrl);
+    const db = new duckdb.AsyncDuckDB(new duckdb.VoidLogger(), worker);
+    await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
+    URL.revokeObjectURL(workerUrl);
+    conn = await db.connect();
+    for (const stmt of SETUP) await conn.query(stmt);
+    const version = await db.getVersion();
+    statusEl.classList.add("ready");
+    statusText.textContent = "DuckDB " + version + " ready · tables f (1024 rows) and coeffs (49 rows) created";
+    const slider = $("k");
+    slider.disabled = false;
+    slider.addEventListener("input", () => {
+      const K = parseInt(slider.value, 10);
+      $("kval").textContent = K;
+      run(K);
+    });
+    await run(parseInt(slider.value, 10));
+  } catch (err) {
+    statusEl.classList.add("error");
+    statusText.textContent = "Failed to load DuckDB-Wasm: " + err.message + " — check that cdn.jsdelivr.net is reachable.";
+  }
+}
+
+window.addEventListener("resize", () => { if (lastRows) draw(lastRows); });
+init();
+</script>
+</body>
+</html>
