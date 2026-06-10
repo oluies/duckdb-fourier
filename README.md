@@ -10,6 +10,8 @@ redraws the result.
 The orthogonal projection is expressed as a few SQL statements, and DuckDB-Wasm
 runs them in the page with no server.
 
+Live demo: https://oluies.github.io/duckdb-fourier/
+
 ![screenshot](docs/screenshot.png)
 
 ## Prerequisites
