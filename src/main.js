@@ -4,6 +4,7 @@ import {
   buildTables,
   runProjection,
   queryFor,
+  setupStatements,
   TARGETS,
 } from "./sql.js";
 
@@ -32,10 +33,18 @@ function escapeHtml(s) {
     .replace(/>/g, "&gt;");
 }
 
-function renderSql(K) {
-  let html = escapeHtml(queryFor(K)).replace(KEYWORDS, '<span class="kw">$1</span>');
-  // Highlight the K value where the truncation is applied.
+function renderSql(K, targetKey) {
+  // Show the full script: the two CREATE TABLE statements (whose `y` expression
+  // depends on the selected target) and the projection query.
+  const script =
+    setupStatements(targetKey).join(";\n\n") + ";\n\n" + queryFor(K) + ";";
+  let html = escapeHtml(script);
+  // Highlight the target expression so switching square / sawtooth / triangle
+  // visibly changes the SQL, and highlight the K truncation value.
+  const exprEsc = escapeHtml(TARGETS[targetKey].expr);
+  html = html.replace(exprEsc, () => `<mark>${exprEsc}</mark>`);
   html = html.replace(`c.k &lt;= ${K}`, `c.k &lt;= <mark>${K}</mark>`);
+  html = html.replace(KEYWORDS, '<span class="kw">$1</span>');
   $("sqlbox").innerHTML = html;
 }
 
@@ -58,7 +67,7 @@ function setFootnote() {
 
 async function run(K) {
   const myRun = ++runId;
-  renderSql(K);
+  renderSql(K, currentTarget);
   let res;
   try {
     res = await runProjection(K);
@@ -87,8 +96,12 @@ async function selectTarget(key) {
   setFootnote();
   // Bumping runId invalidates any in-flight projection from the old tables.
   runId++;
-  await buildTables(key);
-  await run(parseInt(slider.value, 10));
+  try {
+    await buildTables(key);
+    await run(parseInt(slider.value, 10));
+  } catch (err) {
+    console.error(err);
+  }
 }
 
 // --- Boot ---------------------------------------------------------------------
