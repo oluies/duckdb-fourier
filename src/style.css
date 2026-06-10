@@ -131,6 +131,8 @@ pre .kw { color: #8FB8F0; }
 
 .footnote { margin-top: 24px; font-size: 14px; color: var(--muted); max-width: 64ch; }
 .footnote + .footnote { margin-top: 12px; }
+.footnote a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+.footnote a:hover { text-decoration-thickness: 2px; }
 
 @media (max-width: 560px) {
   .stats { grid-template-columns: 1fr; }
