@@ -142,6 +142,12 @@ src/style.css     styles (system font stack; no web fonts)
 vite.config.js    relative-base static build
 ```
 
+## References
+
+Learn more about DuckDB-Wasm from the
+[VLDB publication](https://www.vldb.org/pvldb/vol15/p3574-kohn.pdf) or the
+[recorded talk](https://www.youtube.com/watch?v=wm82b7PlM6s).
+
 ## License
 
 MIT
