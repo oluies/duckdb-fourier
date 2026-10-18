@@ -1,0 +1,27 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "schedule": ["before 6am on monday"],
+  "timezone": "Europe/Stockholm",
+  "prConcurrentLimit": 5,
+  "packageRules": [
+    {
+      "description": "Was the npm dev-dependencies group in .github/dependabot.yml (dependency-type: development), weekly, limit 5. Its comment read: 'Batch routine dev-tooling bumps into one PR to cut noise.'",
+      "matchManagers": ["npm"],
+      "matchDepTypes": ["devDependencies"],
+      "groupName": "dev-dependencies"
+    },
+    {
+      "description": "Was the github-actions ecosystem: weekly, limit 5. Grouped into one PR.",
+      "matchManagers": ["github-actions"],
+      "groupName": "github actions"
+    },
+    {
+      "description": "vite 5.4.21 -> 8.0.16 was Dependabot #15 and is not folded into the migration PR: three majors at once on the build tool, unverified. Renovate re-raises it on its own.",
+      "matchManagers": ["npm"],
+      "matchPackageNames": ["vite"],
+      "matchUpdateTypes": ["major"],
+      "groupName": "vite major"
+    }
+  ]
+}
