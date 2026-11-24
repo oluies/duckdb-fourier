@@ -32,11 +32,24 @@ jobs:
 
       - name: Verify dist is self-contained (no CDN / external URLs)
         run: |
-          if grep -rEl 'jsdelivr|unpkg|googleapis|gstatic' dist/assets/*.js dist/index.html; then
-            echo "::error::Built assets reference an external CDN"
+          # Anchor on an actual URL, not a bare token. Matching the bare words
+          # false-positives on npm package.json metadata: duckdb-wasm declares
+          # `jsdelivr` and `unpkg` entry-point fields whose values are RELATIVE
+          # paths ("dist/duckdb-browser.cjs"), and from Vite 8 on that metadata is
+          # inlined into the bundle. Vite 5 stripped it, so the old check passed by
+          # luck rather than by being right.
+          #
+          # `(https?:)?//` also catches protocol-relative URLs ("//unpkg.com/..."),
+          # which the token match happened to catch and a naive "https://" would not.
+          #
+          # -n (not -l) so a genuine hit prints the offending line: the old check
+          # only named the file, which made it needlessly hard to diagnose.
+          cdn_url="(https?:)?//[^[:space:]\"'\`]*(jsdelivr|unpkg|googleapis|gstatic)"
+          if grep -rEn "$cdn_url" dist/assets/*.js dist/index.html; then
+            echo "::error::Built assets load from an external CDN (see match above)"
             exit 1
           fi
-          echo "dist/ is self-contained — no external references in JS/HTML"
+          echo "dist/ is self-contained — no external CDN URLs in JS/HTML"
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v7
