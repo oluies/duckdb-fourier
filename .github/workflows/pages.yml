@@ -35,11 +35,20 @@ jobs:
 
       - name: Verify dist is self-contained (no CDN / external URLs)
         run: |
-          if grep -rEl 'jsdelivr|unpkg|googleapis|gstatic' dist/assets/*.js dist/index.html; then
-            echo "::error::Built assets reference an external CDN; refusing to deploy"
+          # Keep in sync with the same step in ci.yml. Anchor on an actual URL, not a
+          # bare token: matching the bare words false-positives on npm package.json
+          # metadata, since duckdb-wasm declares `jsdelivr` and `unpkg` entry-point
+          # fields whose values are RELATIVE paths ("dist/duckdb-browser.cjs"). Vite 8
+          # inlines that metadata; Vite 5 stripped it, so the token match passed by luck.
+          #
+          # `(https?:)?//` also catches protocol-relative URLs ("//unpkg.com/..."),
+          # and -n (not -l) prints the offending line instead of only the file name.
+          cdn_url="(https?:)?//[^[:space:]\"'\`]*(jsdelivr|unpkg|googleapis|gstatic)"
+          if grep -rEn "$cdn_url" dist/assets/*.js dist/index.html; then
+            echo "::error::Built assets load from an external CDN; refusing to deploy (see match above)"
             exit 1
           fi
-          echo "dist/ is self-contained — no external references in JS/HTML"
+          echo "dist/ is self-contained — no external CDN URLs in JS/HTML"
 
       - name: Configure Pages
         uses: actions/configure-pages@v6
